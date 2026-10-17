@@ -13,7 +13,10 @@ SWIFTC="$CLT/usr/bin/swiftc"
 
 if [ ! -x "$SWIFTC" ]; then
   DEV_DIR="$(xcode-select -p 2>/dev/null || true)"
-  if [ -n "$DEV_DIR" ] && [ -x "$DEV_DIR/usr/bin/swiftc" ]; then
+  if [ -n "$DEV_DIR" ] && [ -x "$DEV_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc" ]; then
+    SWIFTC="$DEV_DIR/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    CLT="$DEV_DIR/Platforms/MacOSX.platform/Developer"
+  elif [ -n "$DEV_DIR" ] && [ -x "$DEV_DIR/usr/bin/swiftc" ]; then
     SWIFTC="$DEV_DIR/usr/bin/swiftc"
     CLT="$DEV_DIR"
   fi
@@ -68,10 +71,13 @@ mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
 
 cp "$ROOT/Info.plist" "$OUT/Contents/Info.plist"
 cp "$WORK/AppIcon.icns" "$OUT/Contents/Resources/AppIcon.icns"
+# 使用不同的可执行文件名，按主进程名结束 App 时仍能保留恢复保护。
+cp "$OUT/Contents/MacOS/LidGuard" "$OUT/Contents/MacOS/LidGuardWatchdog"
 
 # ---- 签名 ----------------------------------------------------------------
 # ad-hoc 签名（不依赖开发者证书）。首次打开可能仍需右键 → 打开。
 echo "==> ad-hoc 签名"
+/usr/bin/codesign --force --sign - --timestamp=none "$OUT/Contents/MacOS/LidGuardWatchdog" 2>&1 | sed 's/^/    /'
 /usr/bin/codesign --force --sign - --timestamp=none "$OUT" 2>&1 | sed 's/^/    /'
 
 echo
