@@ -1,16 +1,18 @@
 name: Publish macOS release
 
+# 打 tag（v1.2 / v1.3 …）即自动触发发布。
+# 手动重跑：Actions → 本工作流 → Run workflow → 在 "Use workflow from" 里**选择对应的 tag**。
+# 约定：tag 名必须与 Info.plist 的 CFBundleShortVersionString 一致（v1.2 ↔ 1.2）。
 on:
   push:
-    branches: [main]
-    paths: ['.github/workflows/release.yml']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-v1.1
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -20,30 +22,65 @@ jobs:
     permissions:
       contents: write
     env:
-      SOURCE_COMMIT: 8f1f58a2c119c741a7eb3a775163d77a9da8d081
-      GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: v1.1
+      RELEASE_TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
-      - name: Verify released App source and build
+
+      - name: Verify tag, branch and version
         run: |
-          git diff --exit-code "$SOURCE_COMMIT" -- main.swift build.sh Info.plist make-icon.swift
+          set -euo pipefail
+          test -n "$RELEASE_TAG"
+
+          # 必须是真实存在的 tag（手动重跑最容易踩这一条：忘了在 "Use workflow from" 里选 tag）
+          if ! git rev-parse --verify "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "RELEASE_TAG=$RELEASE_TAG 不是 tag。手动重跑时请在 \"Use workflow from\" 中选择对应的 tag。" >&2
+            exit 1
+          fi
+
+          # tag 必须指向 main 上的提交，避免从游离提交发版
+          git merge-base --is-ancestor HEAD origin/main
+
+          # tag 名必须与 App 版本一致，避免发布内容与版本号不符
           ./build.sh
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' build/守夜.app/Contents/Info.plist)" = 1.1
+          VERSION="${RELEASE_TAG#v}"
+          ACTUAL="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' build/守夜.app/Contents/Info.plist)"
+          echo "tag=$RELEASE_TAG  app-version=$ACTUAL"
+          test "$ACTUAL" = "$VERSION"
+
       - name: Package and verify DMG and ZIP
         run: bash tools/package-release.sh
+
       - name: Publish verified packages
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Create privately first; publish only after every asset uploads.
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+
+          # 已存在的 release 不覆盖：重发请先在网页删除，避免悄悄替换已发布的产物
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG 已存在，本次不重复发布。" >&2
+            exit 1
+          fi
+
+          NOTES="docs/releases/${RELEASE_TAG}.md"
+          if [ -f "$NOTES" ]; then
+            NOTES_ARG=(--notes-file "$NOTES")
+          else
+            echo "未找到 $NOTES，改用自动生成的发布说明"
+            NOTES_ARG=(--generate-notes)
+          fi
+
+          # 先建草稿 → 全部附件上传成功 → 再转为正式发布
           gh release create "$RELEASE_TAG" \
-            build/release/Shouye-1.1-macOS-arm64.dmg \
-            build/release/Shouye-1.1-macOS-arm64.zip \
+            "build/release/Shouye-${VERSION}-macOS-arm64.dmg" \
+            "build/release/Shouye-${VERSION}-macOS-arm64.zip" \
             build/release/SHA256SUMS.txt build/release/INSTALL.txt \
-            --draft --target "$GITHUB_SHA" \
-            --title "守夜 1.1 · macOS 安装版" \
-            --notes-file docs/releases/v1.1.md
+            --draft --target "$(git rev-parse HEAD)" \
+            --title "守夜 ${VERSION} · macOS 安装版" \
+            "${NOTES_ARG[@]}"
+
           gh release edit "$RELEASE_TAG" --draft=false --latest
