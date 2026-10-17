@@ -1,0 +1,49 @@
+name: Publish macOS release
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-v1.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      SOURCE_COMMIT: 8f1f58a2c119c741a7eb3a775163d77a9da8d081
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: v1.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Verify released App source and build
+        run: |
+          git diff --exit-code "$SOURCE_COMMIT" -- main.swift build.sh Info.plist make-icon.swift
+          ./build.sh
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' build/守夜.app/Contents/Info.plist)" = 1.1
+      - name: Package and verify DMG and ZIP
+        run: bash tools/package-release.sh
+      - name: Publish verified packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create privately first; publish only after every asset uploads.
+          gh release create "$RELEASE_TAG" \
+            build/release/Shouye-1.1-macOS-arm64.dmg \
+            build/release/Shouye-1.1-macOS-arm64.zip \
+            build/release/SHA256SUMS.txt build/release/INSTALL.txt \
+            --draft --target "$GITHUB_SHA" \
+            --title "守夜 1.1 · macOS 安装版" \
+            --notes-file docs/releases/v1.1.md
+          gh release edit "$RELEASE_TAG" --draft=false --latest

@@ -54,14 +54,24 @@ macOS 自带的「合盖模式」要求**外接显示器 + 电源 + 键鼠**，�
 
 - **Apple Silicon** Mac（arm64）
 - **macOS 13 Ventura** 及以上
-- 编译需要 **Command Line Tools**（`xcode-select --install`）
+- 使用安装包无需开发工具；自行编译需要 **Command Line Tools**（`xcode-select --install`）
 - **不需要** Xcode 完整版，**不需要** Homebrew，没有任何第三方依赖
 
 > 测试环境：MacBook Pro（M5 Pro）/ macOS 27.0.1。**未在 Intel Mac 上测试。**
 
 ## 安装
 
-目前只提供源码构建（尚无预编译包）。
+### 直接下载安装（推荐）
+
+前往 [GitHub Releases](https://github.com/zyding123/shouye/releases/latest) 下载：
+
+- **DMG**：打开 `Shouye-1.1-macOS-arm64.dmg`，把「守夜.app」拖到 Applications。
+- **ZIP**：解压 `Shouye-1.1-macOS-arm64.zip`，把 App 移到「应用程序」后打开。
+- 安装版只支持 Apple Silicon；无需 Xcode、Command Line Tools 或 Homebrew。`Source code` 为源码包，不是安装包。
+
+如果正在合盖远程使用旧版，正常退出会恢复休眠，请先开盖再更新，避免远程连接中断。
+
+### 从源码构建
 
 ```bash
 git clone https://github.com/zyding123/shouye.git
@@ -76,8 +86,7 @@ open build/守夜.app
 
 因为未做 Apple 公证，首次打开会被 Gatekeeper 拦下：
 
-- **在 Finder 里右键点 `守夜.app` → 打开 → 再点一次「打开」**，或
-- 系统设置 → 隐私与安全性 → 找到被拦下的提示 → 「仍要打开」
+先尝试打开 App，然后前往 **系统设置 → 隐私与安全性 → 找到被拦下的提示 →「仍要打开」**。仅在确认下载来源后允许运行，参见 [Apple 官方说明](https://support.apple.com/102445)。
 
 ## 使用
 
