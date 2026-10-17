@@ -1,0 +1,18 @@
+# 构建产物
+build/
+*.app
+*.icns
+*.iconset/
+
+# 系统与编辑器杂项
+.DS_Store
+*.swp
+*~
+
+# 运行日志与临时文件
+*.log
+*.pid
+
+# 备份文件
+*.bak
+*.orig
