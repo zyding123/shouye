@@ -66,8 +66,8 @@ macOS 自带的「合盖模式」要求**外接显示器 + 电源 + 键鼠**，�
 
 前往 [GitHub Releases](https://github.com/zyding123/shouye/releases/latest) 下载：
 
-- **DMG**：打开 `Shouye-1.2-macOS-arm64.dmg`，把「守夜.app」拖到 Applications。
-- **ZIP**：解压 `Shouye-1.2-macOS-arm64.zip`，把 App 移到「应用程序」后打开。
+- **DMG**：打开 `Shouye-1.2.1-macOS-arm64.dmg`，把「守夜.app」拖到 Applications。
+- **ZIP**：解压 `Shouye-1.2.1-macOS-arm64.zip`，把 App 移到「应用程序」后打开。
 - 安装版只支持 Apple Silicon；无需 Xcode、Command Line Tools 或 Homebrew。`Source code` 为源码包，不是安装包。
 
 如果正在合盖远程使用旧版，正常退出会恢复休眠，请先开盖再更新，避免远程连接中断。
