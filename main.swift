@@ -51,7 +51,7 @@ let kPrefLogin      = "startAtLogin"
 let kPrefFloor      = "batteryFloor"
 let kPrefLockOnLid  = "lockOnLidClose"      // 合盖时自动锁屏
 let kPrefOffDelay   = "displayOffDelay"     // 锁屏后多少秒息屏；-1 = 不自动息屏
-let kPrefPauseOnExternal = "pauseOnExternalDisplay"  // 接外接显示器时自动暂停（默认关）
+let kPrefPauseOnExternal = "pauseOnExternalDisplay"  // 接外接显示器时自动暂停（默认开）
 
 let defaults = UserDefaults.standard
 
@@ -358,7 +358,7 @@ final class LidGuard: NSObject, NSApplicationDelegate {
 
         if defaults.bool(forKey: kPrefAutoEnable, defaultValue: true) {
             // 设置了「接外接显示器时暂停」，且启动时已接外接屏 → 保持暂停，不接管
-            if defaults.bool(forKey: kPrefPauseOnExternal), hasExternalDisplay() {
+            if defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: true), hasExternalDisplay() {
                 pausedByExternal = true
                 desiredOn = false
                 logEvent("启动时检测到外接显示器 → 按设置保持暂停")
@@ -556,7 +556,7 @@ final class LidGuard: NSObject, NSApplicationDelegate {
             toggleItem.title = "开启合盖不休眠"
         }
 
-        externalDisplayItem.state = defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: false) ? .on : .off
+        externalDisplayItem.state = defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: true) ? .on : .off
 
         autoEnableItem.state = defaults.bool(forKey: kPrefAutoEnable, defaultValue: true) ? .on : .off
         loginItem.state = defaults.bool(forKey: kPrefLogin, defaultValue: false) ? .on : .off
@@ -848,7 +848,7 @@ final class LidGuard: NSObject, NSApplicationDelegate {
 
     /// 显示器插拔后的处理：只在用户开启「接外接显示器时暂停」时生效。
     func handleDisplaysChanged() {
-        guard defaults.bool(forKey: kPrefPauseOnExternal) else { return }
+        guard defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: true) else { return }
         if hasExternalDisplay() {
             guard !pausedByExternal else { return }
             pausedByExternal = true
@@ -1007,7 +1007,7 @@ final class LidGuard: NSObject, NSApplicationDelegate {
     }
 
     @objc func onTogglePauseOnExternal(_ sender: NSMenuItem) {
-        let v = !defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: false)
+        let v = !defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: true)
         defaults.set(v, forKey: kPrefPauseOnExternal)
         logEvent("「接外接显示器时暂停」→ \(v ? "开启" : "关闭")")
         if v {

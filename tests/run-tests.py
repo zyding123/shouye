@@ -228,6 +228,14 @@ do {
     let c = LidGuard(); c.isOn = true; c.desiredOn = true
     probe.externalDisplay = true
     c.handleDisplaysChanged()
+    check(c.pausedByExternal && !c.desiredOn, "external display pauses by default")
+}
+reset()
+do {
+    let c = LidGuard(); c.isOn = true; c.desiredOn = true
+    defaults.set(false, forKey: kPrefPauseOnExternal)
+    probe.externalDisplay = true
+    c.handleDisplaysChanged()
     check(c.desiredOn && c.isOn && !c.pausedByExternal, "external display ignored when setting is off")
 }
 reset()
