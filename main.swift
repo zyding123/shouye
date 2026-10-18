@@ -51,6 +51,7 @@ let kPrefLogin      = "startAtLogin"
 let kPrefFloor      = "batteryFloor"
 let kPrefLockOnLid  = "lockOnLidClose"      // 合盖时自动锁屏
 let kPrefOffDelay   = "displayOffDelay"     // 锁屏后多少秒息屏；-1 = 不自动息屏
+let kPrefPauseOnExternal = "pauseOnExternalDisplay"  // 接外接显示器时自动暂停（默认关）
 
 let defaults = UserDefaults.standard
 
@@ -187,6 +188,30 @@ func isScreenLocked() -> Bool? {
     return nil
 }
 
+/// 是否接着外接显示器（内置屏之外的任意一块）。
+/// 用「在线」而不是「活跃」：显示器息屏但线还插着，也算是在桌面场景里。
+func hasExternalDisplay() -> Bool {
+    var count: UInt32 = 0
+    guard CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 else { return false }
+    var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+    guard CGGetOnlineDisplayList(count, &ids, &count) == .success else { return false }
+    for i in 0..<Int(count) where CGDisplayIsBuiltin(ids[i]) == 0 {
+        return true
+    }
+    return false
+}
+
+let kDisplaysChanged = Notification.Name("LidGuardDisplaysChanged")
+
+/// 注册显示器插拔回调。回调里先等 1 秒：重配置过程中屏幕列表会短暂抖动。
+func registerDisplayChangeObserver() {
+    CGDisplayRegisterReconfigurationCallback({ _, _, _ in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            NotificationCenter.default.post(name: kDisplaysChanged, object: nil)
+        }
+    }, nil)
+}
+
 /// 关闭显示器（真·息屏）。优先免密码执行，失败再尝试走已授权的 sudo。
 @discardableResult
 func displayOffNow() -> (ok: Bool, msg: String) {
@@ -292,10 +317,12 @@ final class LidGuard: NSObject, NSApplicationDelegate {
     var batteryItem: NSMenuItem!
     var lockOnLidItem: NSMenuItem!
     var offDelayItem: NSMenuItem!
+    var externalDisplayItem: NSMenuItem!
     var fixAuthItem: NSMenuItem!
 
     var isOn = false            // 最近一次回读确认的实际状态
     var desiredOn = false      // 用户当前意图，与实际状态分开
+    var pausedByExternal = false   // 是否因外接显示器自动暂停（区别于用户手动暂停）
     var recoveryPending = false
     var statusError: String?
     var launchRetry: DispatchWorkItem?
@@ -322,11 +349,25 @@ final class LidGuard: NSObject, NSApplicationDelegate {
         startBatteryTimer()
         startLidTimer()
         startHealthTimer()
+
+        // 显示器插拔监听：外接屏接入/断开时，按设置决定是否自动暂停/恢复
+        registerDisplayChangeObserver()
+        NotificationCenter.default.addObserver(forName: kDisplaysChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.handleDisplaysChanged()
+        }
+
         if defaults.bool(forKey: kPrefAutoEnable, defaultValue: true) {
-            desiredOn = true
-            if authorized { enableAtLaunch(attemptsLeft: 5) }
-            else if askToInstallGrant() { _ = enableMode() }
-            else { desiredOn = false }
+            // 设置了「接外接显示器时暂停」，且启动时已接外接屏 → 保持暂停，不接管
+            if defaults.bool(forKey: kPrefPauseOnExternal), hasExternalDisplay() {
+                pausedByExternal = true
+                desiredOn = false
+                logEvent("启动时检测到外接显示器 → 按设置保持暂停")
+            } else {
+                desiredOn = true
+                if authorized { enableAtLaunch(attemptsLeft: 5) }
+                else if askToInstallGrant() { _ = enableMode() }
+                else { desiredOn = false }
+            }
         } else if isOn {
             // 接管已开启的系统状态，也必须先具备有效的恢复保护。
             desiredOn = true
@@ -449,6 +490,11 @@ final class LidGuard: NSObject, NSApplicationDelegate {
         offDelayItem.submenu = offSub
         menu.addItem(offDelayItem)
 
+        externalDisplayItem = NSMenuItem(title: "接外接显示器时暂停",
+                                         action: #selector(onTogglePauseOnExternal), keyEquivalent: "")
+        externalDisplayItem.target = self
+        menu.addItem(externalDisplayItem)
+
         let testItem = NSMenuItem(title: "立即测试：锁屏 + 息屏", action: #selector(onTestLockNow), keyEquivalent: "")
         testItem.target = self
         menu.addItem(testItem)
@@ -502,10 +548,15 @@ final class LidGuard: NSObject, NSApplicationDelegate {
         if isOn {
             statusLine.title = "状态：守夜中 — 合盖不会休眠"
             toggleItem.title = "暂停（恢复合盖休眠）"
+        } else if pausedByExternal {
+            statusLine.title = "状态：已暂停 — 检测到外接显示器"
+            toggleItem.title = "开启合盖不休眠"
         } else {
             statusLine.title = "状态：系统默认 — 合盖会休眠"
             toggleItem.title = "开启合盖不休眠"
         }
+
+        externalDisplayItem.state = defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: false) ? .on : .off
 
         autoEnableItem.state = defaults.bool(forKey: kPrefAutoEnable, defaultValue: true) ? .on : .off
         loginItem.state = defaults.bool(forKey: kPrefLogin, defaultValue: false) ? .on : .off
@@ -793,8 +844,37 @@ final class LidGuard: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - 外接显示器策略
+
+    /// 显示器插拔后的处理：只在用户开启「接外接显示器时暂停」时生效。
+    func handleDisplaysChanged() {
+        guard defaults.bool(forKey: kPrefPauseOnExternal) else { return }
+        if hasExternalDisplay() {
+            guard !pausedByExternal else { return }
+            pausedByExternal = true
+            logEvent("检测到外接显示器 → 按设置暂停守夜")
+            if desiredOn || isOn { _ = disableMode(reason: "外接显示器") }
+            refreshUI()
+        } else {
+            guard pausedByExternal else { return }
+            pausedByExternal = false
+            logEvent("外接显示器已断开 → 按设置恢复守夜")
+            if defaults.bool(forKey: kPrefAutoEnable, defaultValue: true) {
+                desiredOn = true
+                enableAtLaunch(attemptsLeft: 3)
+            }
+            refreshUI()
+        }
+    }
+
     func handleLidClosed() {
         guard isOn, desiredOn, !recoveryPending else { return }
+        // 合盖 + 外接显示器 = 正常的桌面使用形态（clamshell）。
+        // 这时候锁屏/息屏都会打断正在用电脑的人，一律跳过。
+        if hasExternalDisplay() {
+            logEvent("合盖，但检测到外接显示器 → 跳过锁屏与息屏")
+            return
+        }
         lidClosedAt = Date()
         lockVerification?.invalidate()
         lockVerification = nil
@@ -803,7 +883,7 @@ final class LidGuard: NSObject, NSApplicationDelegate {
             if isScreenLocked() == true { scheduleDisplayOff(); return }
             guard lockScreenNow() else { handleLockFailure(); return }
             logEvent("合盖 → 已请求锁屏，等待会话状态确认")
-            var remaining = 8
+            var remaining = 40   // 0.25s × 40 = 10 秒；外接屏/慢机型上锁屏会明显更慢
             lockVerification = commonTimer(interval: 0.25, repeats: true) { [weak self] timer in
                 guard let self = self else { timer.invalidate(); return }
                 guard self.isOn, self.desiredOn, isLidClosed() == true else {
@@ -825,10 +905,14 @@ final class LidGuard: NSObject, NSApplicationDelegate {
     }
 
     func handleLockFailure() {
-        let restored = disableMode(reason: "锁屏未确认")
-        alert("未能确认锁屏", restored
-              ? "已恢复合盖休眠。系统锁屏接口不可用或未能确认，请先手动锁屏。"
-              : "锁屏未确认，恢复休眠也尚未成功。请手动锁屏并检查权限，程序将继续重试恢复。")
+        // 不再关闭守夜。
+        // 原因：「锁屏未确认」最常见的两种解释是①用户自己解锁了 ②系统锁屏较慢，
+        // 这两种情况下把正在使用的机器推入休眠，代价远大于收益（曾经把用户坑过）。
+        // 现在只记录状态、跳过息屏，守夜保持开启。
+        logEvent("锁屏未确认（可能已手动解锁或系统响应慢）→ 保持守夜，跳过息屏")
+        statusError = "锁屏未确认（可能已手动解锁）"
+        cancelPendingDisplayOff()
+        refreshUI()
     }
 
     func scheduleDisplayOff() {
@@ -916,8 +1000,27 @@ final class LidGuard: NSObject, NSApplicationDelegate {
 
     @objc func onToggle() {
         cancelLaunchRetry()
+        // 手动操作优先：用户自己点了开关，就不再算「因外接显示器暂停」
+        pausedByExternal = false
         if isOn || desiredOn || recoveryPending { _ = disableMode(reason: "手动") }
         else { _ = enableMode() }
+    }
+
+    @objc func onTogglePauseOnExternal(_ sender: NSMenuItem) {
+        let v = !defaults.bool(forKey: kPrefPauseOnExternal, defaultValue: false)
+        defaults.set(v, forKey: kPrefPauseOnExternal)
+        logEvent("「接外接显示器时暂停」→ \(v ? "开启" : "关闭")")
+        if v {
+            handleDisplaysChanged()          // 立刻按当前显示器状态生效
+        } else if pausedByExternal {
+            // 关掉这个设置时，把之前被它暂停的状态恢复回来
+            pausedByExternal = false
+            if defaults.bool(forKey: kPrefAutoEnable, defaultValue: true) {
+                desiredOn = true
+                enableAtLaunch(attemptsLeft: 3)
+            }
+        }
+        refreshUI()
     }
 
     @objc func onToggleAutoEnable(_ sender: NSMenuItem) {
@@ -1134,6 +1237,12 @@ if CommandLine.arguments.contains("--events") {
     } else {
         print("（还没有事件日志）")
     }
+    exit(0)
+}
+
+// 诊断开关：打印显示器状态
+if CommandLine.arguments.contains("--displays") {
+    print(hasExternalDisplay() ? "external" : "builtin-only")
     exit(0)
 }
 

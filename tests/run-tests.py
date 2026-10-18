@@ -51,6 +51,7 @@ with tempfile.TemporaryDirectory(prefix='lidguard-regression-') as tmp:
         ('func logEvent(', 'probe.logs.append(msg)'),
         ('func isLidClosed(', 'probe.lidReads += 1; return probe.lidClosed'),
         ('func isScreenLocked(', 'return probe.screenLocked'),
+        ('func hasExternalDisplay(', 'return probe.externalDisplay'),
         ('func lockScreenNow(', 'probe.lockRequests += 1; return probe.lockRequestAccepted'),
         ('func refreshUI(', 'probe.uiRefreshes += 1'),
         ('func alert(', 'probe.alerts.append(title)'),
@@ -87,6 +88,7 @@ final class Probe {
     var lidReads = 0
     var screenLocked: Bool? = false
     var lockRequestAccepted = true
+    var externalDisplay = false
     var lockRequests = 0
     var displayOffCalls = 0
     var battery = "Now drawing from 'AC Power'\n -InternalBattery-0 85%; charging"
@@ -199,8 +201,34 @@ do {
     let c = LidGuard(); c.isOn = true; c.desiredOn = true; probe.lidClosed = true
     c.handleLidClosed()
     check(c.pendingDisplayOff == nil && c.lockVerification != nil, "display waits for confirmed session lock")
-    for _ in 0..<8 { c.lockVerification?.fire() }
-    check(!c.desiredOn && !c.isOn && probe.displayOffCalls == 0, "unconfirmed lock fails safely to restored sleep")
+    for _ in 0..<40 { c.lockVerification?.fire() }
+    check(c.desiredOn && c.isOn && probe.displayOffCalls == 0, "unconfirmed lock keeps guarding and skips display sleep")
+}
+reset()
+do {
+    let c = LidGuard(); c.isOn = true; c.desiredOn = true; probe.lidClosed = true
+    probe.externalDisplay = true
+    c.handleLidClosed()
+    check(c.pendingDisplayOff == nil && c.lockVerification == nil && probe.lockRequests == 0,
+          "lid close with external display never locks")
+}
+reset()
+do {
+    let c = LidGuard(); c.isOn = true; c.desiredOn = true
+    defaults.set(true, forKey: kPrefPauseOnExternal)
+    probe.externalDisplay = true
+    c.handleDisplaysChanged()
+    check(c.pausedByExternal && !c.desiredOn && !c.isOn, "external display pauses guarding when enabled")
+    probe.externalDisplay = false
+    c.handleDisplaysChanged()
+    check(!c.pausedByExternal && c.desiredOn && c.isOn, "unplugging external display resumes guarding")
+}
+reset()
+do {
+    let c = LidGuard(); c.isOn = true; c.desiredOn = true
+    probe.externalDisplay = true
+    c.handleDisplaysChanged()
+    check(c.desiredOn && c.isOn && !c.pausedByExternal, "external display ignored when setting is off")
 }
 reset()
 do {
