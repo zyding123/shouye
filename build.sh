@@ -59,15 +59,35 @@ mkdir -p "$WORK/AppIcon.iconset"
 /usr/bin/iconutil -c icns "$WORK/AppIcon.iconset" -o "$WORK/AppIcon.icns"
 
 # ---- 编译主程序 ----------------------------------------------------------
-echo "==> 编译主程序"
+# 默认同时编译 Apple Silicon 与 Intel，再用 lipo 合成通用二进制。
+# 只想编一个架构时可以：ARCHS=arm64 ./build.sh
+ARCHS="${ARCHS:-arm64 x86_64}"
+echo "==> 编译主程序（架构：$ARCHS)"
 rm -rf "$OUT"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
-"$SWIFTC" -O \
-  -target arm64-apple-macos13.0 \
-  -sdk "$SDK" \
-  -framework Cocoa \
-  -o "$OUT/Contents/MacOS/LidGuard" \
-  "$ROOT/main.swift"
+
+SLICES=()
+for A in $ARCHS; do
+  echo "    编译 $A 切片"
+  if ! "$SWIFTC" -O \
+        -target "$A-apple-macos13.0" \
+        -sdk "$SDK" \
+        -framework Cocoa \
+        -o "$WORK/LidGuard-$A" \
+        "$ROOT/main.swift" 2> "$WORK/$A.log"; then
+    echo "    ✗ $A 编译失败：" >&2
+    /usr/bin/tail -20 "$WORK/$A.log" | sed 's/^/      /' >&2
+    exit 1
+  fi
+  SLICES+=("$WORK/LidGuard-$A")
+done
+
+if [ "${#SLICES[@]}" -gt 1 ]; then
+  /usr/bin/lipo -create "${SLICES[@]}" -output "$OUT/Contents/MacOS/LidGuard"
+else
+  /bin/cp "${SLICES[0]}" "$OUT/Contents/MacOS/LidGuard"
+fi
+echo "    产出的架构：$(/usr/bin/lipo -archs "$OUT/Contents/MacOS/LidGuard")"
 
 cp "$ROOT/Info.plist" "$OUT/Contents/Info.plist"
 cp "$WORK/AppIcon.icns" "$OUT/Contents/Resources/AppIcon.icns"

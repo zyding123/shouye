@@ -1,5 +1,5 @@
 #!/bin/bash
-# Package a verified arm64 App without launching it or touching power settings.
+# Package a verified universal (arm64 + x86_64) App without launching it or touching power settings.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +15,11 @@ case "$VERSION" in
   ''|*[!0-9.]*) echo "Invalid version: $VERSION" >&2; exit 1 ;;
 esac
 for BINARY in LidGuard LidGuardWatchdog; do
-  /usr/bin/file "$APP/Contents/MacOS/$BINARY" | /usr/bin/grep -q 'arm64'
+  ARCHS="$(/usr/bin/lipo -archs "$APP/Contents/MacOS/$BINARY" 2>/dev/null || true)"
+  case "$ARCHS" in
+    *arm64*x86_64*|*x86_64*arm64*) ;;
+    *) echo "不是通用二进制: $BINARY -> ${ARCHS:-未知}" >&2; exit 1 ;;
+  esac
 done
 /usr/bin/codesign --verify --deep --strict "$APP"
 mkdir -p "$OUT"
@@ -28,16 +32,17 @@ ln -s /Applications "$PAYLOAD/Applications"
 cat > "$OUT/INSTALL.txt" <<EOF
 守夜 LidGuard $VERSION
 
-系统要求：Apple Silicon Mac（M 系列），macOS 13 或更高版本。
-不支持 Intel Mac；下载预编译包后不需要 Xcode、Command Line Tools 或 Homebrew。
+系统要求：Apple Silicon 或 Intel Mac，macOS 13 或更高版本。
+安装包是通用二进制（arm64 + x86_64），系统会自动选用原生架构；
+下载预编译包后不需要 Xcode、Command Line Tools 或 Homebrew。
 
 DMG 安装：
-1. 打开 Shouye-$VERSION-macOS-arm64.dmg。
+1. 打开 Shouye-$VERSION-macOS-universal.dmg。
 2. 把「守夜.app」拖到「Applications」文件夹。
 3. 从「应用程序」打开「守夜」，按提示完成一次性管理员授权。
 
 ZIP 安装：
-解压 Shouye-$VERSION-macOS-arm64.zip，把「守夜.app」移到「应用程序」后打开。
+解压 Shouye-$VERSION-macOS-universal.zip，把「守夜.app」移到「应用程序」后打开。
 
 首次打开：
 本版本采用 ad-hoc 签名，尚未使用 Developer ID 证书及 Apple 公证。
@@ -58,7 +63,7 @@ Apple 说明：https://support.apple.com/102445
 EOF
 cp "$OUT/INSTALL.txt" "$PAYLOAD/安装说明.txt"
 
-BASE="Shouye-$VERSION-macOS-arm64"
+BASE="Shouye-$VERSION-macOS-universal"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$PAYLOAD/守夜.app" "$OUT/$BASE.zip"
 /usr/bin/hdiutil create -quiet -volname "守夜 $VERSION" -srcfolder "$PAYLOAD" -format UDZO -fs HFS+ "$OUT/$BASE.dmg"
 

@@ -10,7 +10,7 @@
 
 > A tiny macOS menu-bar app that keeps your MacBook awake with the lid closed,
 > with automatic lock screen, delayed display-off, and verified restore, a watchdog, and low-battery protection.
-> Native Swift · no kext · no daemon · no telemetry · Apple Silicon, macOS 13+
+> Native Swift · no kext · no daemon · no telemetry · Universal (Apple Silicon + Intel), macOS 13+
 
 ---
 
@@ -53,12 +53,12 @@ macOS 自带的「合盖模式」要求**外接显示器 + 电源 + 键鼠**，�
 
 ## 系统要求
 
-- **Apple Silicon** Mac（arm64）
+- **Apple Silicon 或 Intel** Mac（安装包为通用二进制，自动选用原生架构）
 - **macOS 13 Ventura** 及以上
 - 使用安装包无需开发工具；自行编译需要 **Command Line Tools**（`xcode-select --install`）
 - **不需要** Xcode 完整版，**不需要** Homebrew，没有任何第三方依赖
 
-> 测试环境：MacBook Pro（M5 Pro）/ macOS 27.0.1。**未在 Intel Mac 上测试。**
+> 测试环境：MacBook Pro（M5 Pro）/ macOS 27.0.1（原生）；Intel 切片通过 Rosetta 2 验证。**未在真实 Intel 硬件上测试。**
 
 ## 安装
 
@@ -66,9 +66,9 @@ macOS 自带的「合盖模式」要求**外接显示器 + 电源 + 键鼠**，�
 
 前往 [GitHub Releases](https://github.com/zyding123/shouye/releases/latest) 下载：
 
-- **DMG**：打开 `Shouye-1.2.1-macOS-arm64.dmg`，把「守夜.app」拖到 Applications。
-- **ZIP**：解压 `Shouye-1.2.1-macOS-arm64.zip`，把 App 移到「应用程序」后打开。
-- 安装版只支持 Apple Silicon；无需 Xcode、Command Line Tools 或 Homebrew。`Source code` 为源码包，不是安装包。
+- **DMG**：打开 `Shouye-1.3.0-macOS-universal.dmg`，把「守夜.app」拖到 Applications。
+- **ZIP**：解压 `Shouye-1.3.0-macOS-universal.zip`，把 App 移到「应用程序」后打开。
+- 安装版是通用二进制（Apple Silicon + Intel）；无需 Xcode、Command Line Tools 或 Homebrew。`Source code` 为源码包，不是安装包。
 
 如果正在合盖远程使用旧版，正常退出会恢复休眠，请先开盖再更新，避免远程连接中断。
 
@@ -223,7 +223,8 @@ GitHub Actions 在 macOS 上运行相同测试、构建并验证签名。自动�
 - 使用了**私有 API**（`SACLockScreenImmediate`）来进入真正的锁屏界面，因此**不适合上架 Mac App Store**
 - ad-hoc 签名、未公证，首次打开需要右键 → 打开
 - **合盖时键盘面散热被遮挡**：适合挂机，不适合在包里跑重负载
-- 只在 Apple Silicon + macOS 27 上实测过；更早系统理论上可用（目标 `macOS 13.0`），但未验证
+- Apple Silicon 在 macOS 27 上实测；**Intel 切片仅在 Rosetta 2 下验证过，未在真实 Intel 硬件上测试**
+- 更早系统理论上可用（目标 `macOS 13.0`），但未逐一验证
 
 ## 卸载
 
@@ -239,4 +240,4 @@ GitHub Actions 在 macOS 上运行相同测试、构建并验证签名。自动�
 
 ---
 
-<sub>在 macOS 27.0.1 / Apple Silicon 上开发与测试。欢迎 issue，但不保证响应速度。</sub>
+<sub>在 macOS 27.0.1（Apple Silicon）与 Rosetta 2（模拟 Intel）上开发与测试。欢迎 issue，但不保证响应速度。</sub>

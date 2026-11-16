@@ -76,8 +76,8 @@ jobs:
 
           # 先建草稿 → 全部附件上传成功 → 再转为正式发布
           gh release create "$RELEASE_TAG" \
-            "build/release/Shouye-${VERSION}-macOS-arm64.dmg" \
-            "build/release/Shouye-${VERSION}-macOS-arm64.zip" \
+            "build/release/Shouye-${VERSION}-macOS-universal.dmg" \
+            "build/release/Shouye-${VERSION}-macOS-universal.zip" \
             build/release/SHA256SUMS.txt build/release/INSTALL.txt \
             --draft --target "$(git rev-parse HEAD)" \
             --title "守夜 ${VERSION} · macOS 安装版" \
